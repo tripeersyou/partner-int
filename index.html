@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
+        integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+    <title>BillsPay Rollout Tool</title>
+</head>
+
+<body>
+    <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.0/dist/umd/popper.min.js"
+        integrity="sha384-Q6E9RHvbIyZFJoft+2mJbHaEWldlvI9IOYy5n3zV9zzTtmI3UksdQRVvoxMfooAo" crossorigin="anonymous">
+    </script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/js/bootstrap.min.js"
+        integrity="sha384-wfSDF2E50Y2D1uUdj0O3uMBJnjuUD4Ih7YwaYd1iqfktj0Uod8GCExl3Og8ifwB6" crossorigin="anonymous">
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-csv/1.0.8/jquery.csv.min.js"
+        integrity="sha256-zGo0JbZ5Sn6wU76MyVL0TrUZUq5GLXaFnMQCe/hSwVI=" crossorigin="anonymous"></script>
+    <script src="http://cdn.jsdelivr.net/g/filesaver.js"></script>
+    <div class="container">
+        <h1>CSV to SQL Converter</h1>
+        <b>Parter Int Billspay Rollout Tool</b>
+        <hr>
+        <div class="row">
+            <div class="col-md-12">
+                <form action="" method="post">
+                    <div class="row">
+                        <div class="form-group col-md-12">
+                            <label for="biller"><code>biller</code> .csv file</label>
+                            <input type="file" name="billers" id="billers" class="form-control-file" accept=".csv">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="biller_wallet"><code>biller_wallet_lookup</code> .csv file</label>
+                            <input type="file" name="biller_wallet_lookup" id="biller_wallet_lookup"
+                                class="form-control-file" accept=".csv">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="biller_field"><code>biller_fields</code> .csv file</label>
+                            <input type="file" name="biller_fields" id="biller_fields" class="form-control-file"
+                                accept=".csv">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="biller_field_rules"><code>biller_field_rules</code> .csv file</label>
+                            <input type="file" name="biller_field_rules" id="biller_field_rules"
+                                class="form-control-file" accept=".csv">
+                        </div>
+                        <div class="form-group col-md-6">
+                            <label for="biller_field_validation"><code>biller_field_validations</code> .csv
+                                file</label>
+                            <input type="file" name="biller_field_validations" id="biller_field_validations"
+                                class="form-control-file" accept=".csv">
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-block">Create Queries</button>
+                </form>
+            </div>
+            <div class="col-md-12">
+                <h3>SQL Results</h3>
+                <h4>Insert Statements</h4>
+                <code class="insert-results">
+
+                </code>
+                <h4>Delete Statements</h4>
+                <code class="rollback-results">
+
+                </code>
+                <button type="submit" id="getSql" class="btn btn-secondary btn-block">Get SQL File</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        $(document).ready(function () {
+            let allSql = ''
+            $('form').submit(function (e) {
+                allSql = '';
+                e.preventDefault();
+                document.querySelector('.insert-results').innerHTML = '';
+                document.querySelector('.rollback-results').innerHTML = '';
+                let billers = document.getElementById("billers");
+                let biller_wallet_lookup = document.getElementById("biller_wallet_lookup");
+                let biller_fields = document.getElementById("biller_fields");
+                let biller_field_rules = document.getElementById("biller_field_rules");
+                let biller_field_validations = document.getElementById("biller_field_validations");
+                if (typeof (FileReader) != "undefined") {
+                    createInsert(billers, '_billers');
+                    createInsert(biller_wallet_lookup, '_biller_wallet_lookup');
+                    createInsert(biller_fields, '_biller_fields');
+                    createInsert(biller_field_rules, '_biller_field_rules');
+                    createInsert(biller_field_validations, '_biller_field_validations');
+                    createDelete(biller_field_validations, '_biller_field_validations');
+                    createDelete(biller_field_rules, '_biller_field_rules');
+                    createDelete(biller_fields, '_biller_fields');
+                    createDelete(biller_wallet_lookup, '_biller_wallet_lookup');
+                    createDelete(billers, '_billers');
+
+                } else {
+                    alert("This browser does not support HTML5.");
+                }
+            })
+
+            function createInsert(file, tableName) {
+                let reader = new FileReader();
+                reader.readAsText(file.files[0]);
+                reader.onload = function (e) {
+                    let fileSql = `START TRANSACTION; <br><br>`;
+                    let fileJson = $.csv.toObjects(e.target.result);
+                    let fileKeys = [];
+                    console.log(fileJson)
+                    Object.keys(fileJson[0]).forEach(function (key) {
+                        fileKeys.push(key);
+                    });
+                    fileJson.forEach(function (row) {
+                        let sql = `INSERT INTO ${tableName}(${fileKeys.join(', ')}) VALUES(`
+                        Object.keys(row).forEach(function (data, i) {
+                            if (data === fileKeys[fileKeys.length - 1]) {
+                                if (isNaN(row[data])) {
+                                    sql += `{'${row[data]}'}`
+                                } else {
+                                    sql += `{${row[data]}}`
+                                }
+                            } else {
+                                if (isNaN(row[data])) {
+                                    sql += `{'${row[data]}'}, `
+                                } else {
+                                    sql += `{${row[data]}}, `
+                                }
+                            }
+                        });
+                        sql += `); <br>`
+                        fileSql += sql
+                    });
+                    console.log(fileSql)
+                    fileSql += "<br> ROLLBACK; <br> or <br> COMMIT; <br>"
+                    allSql += fileSql;
+                    document.querySelector('.insert-results').innerHTML += fileSql
+                    document.querySelector('.insert-results').innerHTML += '<br>'
+                }
+
+            }
+
+            function createDelete(file, tableName) {
+                let reader = new FileReader();
+                reader.readAsText(file.files[0]);
+                reader.onload = function (e) {
+                    let fileSql = `START TRANSACTION; <br><br>`;
+                    let fileJson = $.csv.toObjects(e.target.result);
+                    let fileKeys = [];
+                    console.log(fileJson)
+                    Object.keys(fileJson[0]).forEach(function (key) {
+                        fileKeys.push(key);
+                    });
+                    fileJson.forEach(function (data) {
+                        let sql = `DELETE FROM ${tableName} WHERE `
+                        if (tableName === '_biller_field_validations' || tableName ===
+                            '_biller_field_rules') {
+                            sql += `field_id = {${data.field_id}}`
+                        } else if (tableName === '_biller_wallet_lookup' ||
+                            tableName === '_biller_fields') {
+                            sql += `biller_id = {${data.biller_id}}`
+                        } else if (tableName === '_billers') {
+                            sql += `id = {INSERT_BILLER_ID_HERE}`
+                        }
+                        sql += `; <br>`
+                        fileSql += sql
+                    });
+                    console.log(fileSql)
+                    fileSql += "<br> ROLLBACK; <br> or <br> COMMIT; <br>"
+                    allSql += fileSql;
+                    document.querySelector('.rollback-results').innerHTML += fileSql
+                    document.querySelector('.rollback-results').innerHTML += '<br>'
+                }
+            }
+
+            $('#getSql').click(function (e) {
+                allSql = allSql.replace(/<br>/g, "\n")
+                SaveAsFile(allSql, "billspay.sql", "text/plain;charset=utf-8");
+            });
+
+            function SaveAsFile(t, f, m) {
+                try {
+                    let b = new Blob([t], {
+                        type: m
+                    });
+                    saveAs(b, f);
+                } catch (e) {
+                    window.open("data:" + m + "," + encodeURIComponent(t), '_blank', '');
+                }
+            }
+
+        });
+    </script>
+</body>
+
+</html>
